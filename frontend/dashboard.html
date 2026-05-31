@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Concert Radar</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <header class="header">
+    <div class="header-logo">
+      <span class="dot"></span>
+      Concert Radar
+    </div>
+    <div class="header-user">
+      <img id="header-avatar" class="header-avatar hidden" src="" alt="" />
+      <span id="header-name" class="header-name"></span>
+      <button class="btn btn-ghost btn-sm" id="logout-btn">Disconnect</button>
+    </div>
+  </header>
+
+  <div class="layout">
+
+    <!-- Sidebar: top artists + D3 affinity chart -->
+    <aside class="sidebar">
+      <div class="section-title">Your Top Artists</div>
+      <div id="artists-container">
+        <div class="empty-state">
+          <p>No artists synced yet.</p>
+          <p>Click "Sync Library" to load your top artists.</p>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main: city input + concert feed -->
+    <main class="main">
+
+      <div class="city-bar">
+        <input id="city-input" class="input" type="text" placeholder="Your city (e.g. Los Angeles, CA)" />
+        <button class="btn btn-ghost btn-sm" id="city-btn">Update</button>
+      </div>
+
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px;">
+        <div>
+          <div class="section-title" style="margin-bottom:0">Upcoming Shows</div>
+          <div id="last-updated" class="text-muted" style="font-size:12px;margin-top:2px;"></div>
+        </div>
+        <button class="btn btn-ghost btn-sm" id="sync-btn">Sync Library</button>
+      </div>
+
+      <div class="filter-bar hidden" id="filter-bar">
+        <span class="filter-label">Filter:</span>
+        <select class="filter-select" id="filter-date">
+          <option value="">Any date</option>
+          <option value="7">Next 7 days</option>
+          <option value="30">Next 30 days</option>
+          <option value="90">Next 3 months</option>
+        </select>
+        <select class="filter-select" id="filter-radius">
+          <option value="50">Within 50 mi</option>
+          <option value="25">Within 25 mi</option>
+          <option value="100">Within 100 mi</option>
+        </select>
+      </div>
+
+      <div id="feed-container">
+        <div class="empty-state">
+          <p>No concerts loaded yet.</p>
+          <p id="feed-hint">Set your city and click "Sync Library" to find shows near you.</p>
+        </div>
+      </div>
+
+    </main>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/charts.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', async () => {
+      const user = await requireAuth();
+      if (!user) return;
+
+      // Populate header
+      document.getElementById('header-name').textContent = user.display_name || user.email || '';
+      if (user.avatar_url) {
+        const avatar = document.getElementById('header-avatar');
+        avatar.src = user.avatar_url;
+        avatar.classList.remove('hidden');
+      }
+
+      if (user.city) {
+        document.getElementById('city-input').value = user.city;
+      }
+
+      document.getElementById('logout-btn').addEventListener('click', logout);
+
+      const cityBtn = document.getElementById('city-btn');
+      cityBtn.addEventListener('click', async () => {
+        const city = document.getElementById('city-input').value.trim();
+        if (!city) return;
+        cityBtn.textContent = 'Saving…';
+        cityBtn.disabled = true;
+        try {
+          await apiFetch('/user/city', { method: 'POST', body: JSON.stringify({ city }) });
+          await loadConcerts();
+        } catch (err) {
+          alert(`Could not save city: ${err.message}`);
+        } finally {
+          cityBtn.textContent = 'Update';
+          cityBtn.disabled = false;
+        }
+      });
+
+      // Load previously synced artists + concerts
+      try {
+        const existing = await apiFetch('/artists');
+        if (existing.synced > 0) {
+          renderArtists(existing.artists);
+          loadConcerts();
+        }
+      } catch (_) {}
+
+      // Sync Library
+      const syncBtn = document.getElementById('sync-btn');
+      syncBtn.addEventListener('click', async () => {
+        syncBtn.textContent = 'Syncing…';
+        syncBtn.disabled = true;
+        try {
+          const result = await apiFetch('/artists/sync', { method: 'POST' });
+          renderArtists(result.artists);
+          await loadConcerts();
+        } catch (err) {
+          alert(`Sync failed: ${err.message}`);
+        } finally {
+          syncBtn.textContent = 'Sync Library';
+          syncBtn.disabled = false;
+        }
+      });
+    });
+
+    async function loadConcerts() {
+      const feed = document.getElementById('feed-container');
+      feed.innerHTML = '<div class="empty-state"><p class="skeleton" style="width:60%;height:14px;margin:0 auto"></p></div>';
+      try {
+        const data = await apiFetch('/concerts');
+        renderConcerts(data.concerts);
+        const ts = document.getElementById('last-updated');
+        ts.textContent = data.total
+          ? `${data.total} show${data.total === 1 ? '' : 's'} · updated just now`
+          : '';
+      } catch (err) {
+        feed.innerHTML = `<div class="empty-state"><p class="text-error">${err.message}</p></div>`;
+      }
+    }
+
+    function renderArtists(artists) {
+      createAffinityChart('#artists-container', artists);
+    }
+
+    function renderConcerts(concerts) {
+      const feed = document.getElementById('feed-container');
+      if (!concerts.length) {
+        feed.innerHTML = '<div class="empty-state"><p>No upcoming shows found in your area.</p><p>Try a different city or sync your library again.</p></div>';
+        return;
+      }
+
+      document.getElementById('filter-bar').classList.remove('hidden');
+      feed.innerHTML = '';
+
+      concerts.forEach(c => {
+        const a = document.createElement('a');
+        a.href = c.ticket_url || '#';
+        a.target = '_blank';
+        a.rel = 'noopener noreferrer';
+
+        const card = document.createElement('div');
+        card.className = 'card';
+
+        const img = document.createElement('img');
+        img.className = 'card-artist-img';
+        img.src = c.artist_image_url || '';
+        img.alt = c.artist_name;
+        img.onerror = () => { img.style.display = 'none'; };
+
+        const body = document.createElement('div');
+        body.className = 'card-body';
+
+        const top = document.createElement('div');
+        top.className = 'card-top';
+        const artistSpan = document.createElement('span');
+        artistSpan.className = 'card-artist';
+        artistSpan.textContent = c.artist_name;
+        const badge = document.createElement('span');
+        badge.className = 'badge';
+        badge.textContent = `${Math.round(c.affinity_score)} affinity`;
+        top.append(artistSpan, badge);
+
+        const eventDiv = document.createElement('div');
+        eventDiv.className = 'card-event';
+        eventDiv.textContent = c.event_name;
+
+        const venueDiv = document.createElement('div');
+        venueDiv.className = 'card-venue';
+        venueDiv.textContent = [c.venue_name, c.venue_city].filter(Boolean).join(' · ');
+
+        const footer = document.createElement('div');
+        footer.className = 'card-footer';
+        const dateSpan = document.createElement('span');
+        dateSpan.className = 'card-date';
+        dateSpan.textContent = c.event_date
+          ? new Date(c.event_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+          : '';
+        const priceSpan = document.createElement('span');
+        priceSpan.className = 'card-price';
+        if (c.price_min != null) {
+          priceSpan.textContent = c.price_max && c.price_max !== c.price_min
+            ? `$${Math.round(c.price_min)}–$${Math.round(c.price_max)}`
+            : `From $${Math.round(c.price_min)}`;
+        }
+        footer.append(dateSpan, priceSpan);
+
+        body.append(top, eventDiv, venueDiv, footer);
+        card.append(img, body);
+        a.appendChild(card);
+        feed.appendChild(a);
+      });
+    }
+  </script>
+
+</body>
+</html>
