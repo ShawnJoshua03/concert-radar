@@ -23,6 +23,7 @@ _SCOPES = "user-read-private user-read-email user-top-read user-read-recently-pl
 # Server-side state store avoids cookie domain issues (e.g. localhost vs 127.0.0.1 in dev)
 _oauth_states: dict[str, float] = {}  # state -> expiry unix timestamp
 _STATE_TTL = 600  # 10 minutes
+_TOKEN_REFRESH_MARGIN = timedelta(seconds=60)
 
 
 def _store_state(state: str) -> None:
@@ -62,7 +63,46 @@ def get_current_user_id(request: Request) -> str:
     try:
         return _decode_session_token(auth[len("Bearer "):])
     except JWTError:
-        raise HTTPException(status_code=401, detail="Invalid session")
+        raise HTTPException(status_code=401, detail="Invalid session") from None
+
+
+def _request_refreshed_tokens(refresh_token: str) -> dict:
+    token_resp = httpx.post(
+        _SPOTIFY_TOKEN_URL,
+        data={"grant_type": "refresh_token", "refresh_token": refresh_token},
+        auth=(os.getenv("SPOTIFY_CLIENT_ID"), os.getenv("SPOTIFY_CLIENT_SECRET")),
+        timeout=10,
+    )
+    if token_resp.status_code in (400, 401):
+        raise HTTPException(status_code=401, detail="Spotify session expired — please log in again")
+    token_resp.raise_for_status()
+    return token_resp.json()
+
+
+def _refresh_and_store(user: dict) -> str:
+    if not user["refresh_token"]:
+        raise HTTPException(status_code=401, detail="Spotify session expired — please log in again")
+    tokens = _request_refreshed_tokens(user["refresh_token"])
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(queries.UPDATE_TOKENS, {
+                "access_token":     tokens["access_token"],
+                # Spotify only sometimes rotates the refresh token
+                "refresh_token":    tokens.get("refresh_token", user["refresh_token"]),
+                "token_expires_at": datetime.now(timezone.utc) + timedelta(seconds=tokens["expires_in"]),
+                "user_id":          str(user["id"]),
+            })
+    return tokens["access_token"]
+
+
+def get_spotify_access_token(user: dict) -> str:
+    """Returns a usable Spotify access token, refreshing it first if it's about to expire."""
+    expires_at = user["token_expires_at"]
+    if expires_at is not None and expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    if expires_at is None or expires_at - _TOKEN_REFRESH_MARGIN > datetime.now(timezone.utc):
+        return user["access_token"]
+    return _refresh_and_store(user)
 
 
 @router.get("/login")
@@ -97,6 +137,7 @@ def callback(request: Request, code: str = None, state: str = None, error: str =
             "redirect_uri": os.getenv("SPOTIFY_REDIRECT_URI"),
         },
         auth=(os.getenv("SPOTIFY_CLIENT_ID"), os.getenv("SPOTIFY_CLIENT_SECRET")),
+        timeout=10,
     )
     token_resp.raise_for_status()
     tokens = token_resp.json()
@@ -108,6 +149,7 @@ def callback(request: Request, code: str = None, state: str = None, error: str =
     profile_resp = httpx.get(
         _SPOTIFY_ME_URL,
         headers={"Authorization": f"Bearer {access_token}"},
+        timeout=10,
     )
     profile_resp.raise_for_status()
     profile = profile_resp.json()
@@ -170,24 +212,5 @@ def refresh(request: Request):
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    token_resp = httpx.post(
-        _SPOTIFY_TOKEN_URL,
-        data={
-            "grant_type":    "refresh_token",
-            "refresh_token": user["refresh_token"],
-        },
-        auth=(os.getenv("SPOTIFY_CLIENT_ID"), os.getenv("SPOTIFY_CLIENT_SECRET")),
-    )
-    token_resp.raise_for_status()
-    tokens = token_resp.json()
-
-    with get_db() as conn:
-        with conn.cursor() as cur:
-            cur.execute(queries.UPDATE_TOKENS, {
-                "access_token":     tokens["access_token"],
-                "refresh_token":    tokens.get("refresh_token", user["refresh_token"]),
-                "token_expires_at": datetime.now(timezone.utc) + timedelta(seconds=tokens["expires_in"]),
-                "user_id":          user_id,
-            })
-
+    _refresh_and_store(user)
     return {"ok": True}
