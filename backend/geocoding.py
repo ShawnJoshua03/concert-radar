@@ -1,7 +1,11 @@
+import os
+
 import httpx
 
 _URL = "https://nominatim.openstreetmap.org/search"
-_USER_AGENT = "ConcertRadar/1.0 (shawnlasrado@gmail.com)"
+# Nominatim's usage policy asks for an identifying User-Agent; set NOMINATIM_CONTACT
+# to an email or URL so they can reach you if your traffic causes problems.
+_USER_AGENT = f"ConcertRadar/1.0 ({os.getenv('NOMINATIM_CONTACT', 'https://github.com/ShawnJoshua03/concert-radar')})"
 
 
 def geocode_city(city: str) -> tuple[float, float] | None:

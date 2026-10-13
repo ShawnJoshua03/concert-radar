@@ -1,12 +1,22 @@
-# secrets
+# Secrets
 .env
+.env.*
+!.env.example
 
 # Python
 __pycache__/
-*.pyc
-*.pyo
+*.py[cod]
 .venv/
 venv/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Local tooling / AI assistant state
+.claude/
+.claude-flow/
+CLAUDE.md
 
 # OS
 .DS_Store
