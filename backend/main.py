@@ -1,20 +1,27 @@
 import os
+from urllib.parse import urlsplit
 
 from dotenv import load_dotenv
+
 load_dotenv()
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from auth import router as auth_router
 from artists import router as artists_router
+from auth import router as auth_router
 from concerts import router as concerts_router
 from users import router as users_router
 
 app = FastAPI(title="Concert Radar API")
 
-_frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
-_cors_origin = _frontend_url.split("/dashboard")[0]  # strip path, keep origin
+
+def _origin(url: str) -> str:
+    parts = urlsplit(url)
+    return f"{parts.scheme}://{parts.netloc}"
+
+
+_cors_origin = _origin(os.getenv("FRONTEND_URL", "http://127.0.0.1:3000/dashboard.html"))
 
 app.add_middleware(
     CORSMiddleware,
