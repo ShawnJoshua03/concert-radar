@@ -20,6 +20,11 @@
     </div>
   </header>
 
+  <div id="demo-banner" class="demo-banner hidden">
+    <strong>Demo mode</strong>: fictional artists and shows, scored with the real affinity algorithm.
+    <a href="https://github.com/ShawnJoshua03/concert-radar">How it works →</a>
+  </div>
+
   <div class="layout">
 
     <!-- Sidebar: top artists + D3 affinity chart -->
@@ -57,11 +62,6 @@
           <option value="30">Next 30 days</option>
           <option value="90">Next 3 months</option>
         </select>
-        <select class="filter-select" id="filter-radius">
-          <option value="50">Within 50 mi</option>
-          <option value="25">Within 25 mi</option>
-          <option value="100">Within 100 mi</option>
-        </select>
       </div>
 
       <div id="feed-container">
@@ -74,7 +74,8 @@
     </main>
   </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
+  <script src="js/demo.js"></script>
   <script src="js/api.js"></script>
   <script src="js/auth.js"></script>
   <script src="js/charts.js"></script>
@@ -82,6 +83,8 @@
     document.addEventListener('DOMContentLoaded', async () => {
       const user = await requireAuth();
       if (!user) return;
+
+      if (DEMO_MODE) document.getElementById('demo-banner').classList.remove('hidden');
 
       // Populate header
       document.getElementById('header-name').textContent = user.display_name || user.email || '';
@@ -96,6 +99,9 @@
       }
 
       document.getElementById('logout-btn').addEventListener('click', logout);
+      if (DEMO_MODE) document.getElementById('logout-btn').textContent = 'Exit demo';
+
+      document.getElementById('filter-date').addEventListener('change', () => renderConcerts(allConcerts));
 
       const cityBtn = document.getElementById('city-btn');
       cityBtn.addEventListener('click', async () => {
@@ -141,18 +147,29 @@
       });
     });
 
+    let allConcerts = [];
+
+    function applyDateFilter(concerts) {
+      const days = Number(document.getElementById('filter-date').value);
+      if (!days) return concerts;
+      const cutoff = Date.now() + days * 24 * 60 * 60 * 1000;
+      return concerts.filter(c => c.event_date && new Date(c.event_date).getTime() <= cutoff);
+    }
+
     async function loadConcerts() {
       const feed = document.getElementById('feed-container');
       feed.innerHTML = '<div class="empty-state"><p class="skeleton" style="width:60%;height:14px;margin:0 auto"></p></div>';
       try {
         const data = await apiFetch('/concerts');
-        renderConcerts(data.concerts);
+        allConcerts = data.concerts;
+        renderConcerts(allConcerts);
         const ts = document.getElementById('last-updated');
         ts.textContent = data.total
           ? `${data.total} show${data.total === 1 ? '' : 's'} · updated just now`
           : '';
       } catch (err) {
-        feed.innerHTML = `<div class="empty-state"><p class="text-error">${err.message}</p></div>`;
+        feed.innerHTML = '<div class="empty-state"><p class="text-error"></p></div>';
+        feed.querySelector('.text-error').textContent = err.message;
       }
     }
 
@@ -160,14 +177,19 @@
       createAffinityChart('#artists-container', artists);
     }
 
-    function renderConcerts(concerts) {
+    function renderConcerts(allShows) {
       const feed = document.getElementById('feed-container');
-      if (!concerts.length) {
+      if (!allShows.length) {
         feed.innerHTML = '<div class="empty-state"><p>No upcoming shows found in your area.</p><p>Try a different city or sync your library again.</p></div>';
         return;
       }
 
       document.getElementById('filter-bar').classList.remove('hidden');
+      const concerts = applyDateFilter(allShows);
+      if (!concerts.length) {
+        feed.innerHTML = '<div class="empty-state"><p>No shows in that date range.</p><p>Try a wider window.</p></div>';
+        return;
+      }
       feed.innerHTML = '';
 
       const grid = document.createElement('div');
@@ -183,9 +205,11 @@
         // ── Card link wrapper ───────────────────────────────────────
         const link = document.createElement('a');
         link.className = 'concert-card';
-        link.href      = c.ticket_url || '#';
-        link.target    = '_blank';
-        link.rel       = 'noopener noreferrer';
+        if (c.ticket_url) {
+          link.href   = c.ticket_url;
+          link.target = '_blank';
+          link.rel    = 'noopener noreferrer';
+        }
 
         // ── Backdrop: photo + gradient overlay + affinity ring ──────
         const backdrop = document.createElement('div');

@@ -1,3 +1,6 @@
+// Paths are relative so the site works both at a domain root and under a
+// subpath such as https://<user>.github.io/concert-radar/.
+
 function _extractTokenFromUrl() {
   const params = new URLSearchParams(window.location.search);
   const token = params.get('token');
@@ -16,12 +19,12 @@ async function getUser() {
   }
 }
 
-// Call on dashboard.html — redirects to / if not logged in
+// Call on dashboard.html — redirects to the landing page if not logged in
 async function requireAuth() {
   _extractTokenFromUrl();
   const user = await getUser();
   if (!user) {
-    window.location.href = '/';
+    window.location.href = 'index.html';
     return null;
   }
   return user;
@@ -29,13 +32,15 @@ async function requireAuth() {
 
 // Call on index.html — redirects to dashboard if already logged in
 async function requireGuest() {
+  if (DEMO_MODE) return;  // the demo has no session; let visitors read the landing page
   const user = await getUser();
   if (user) {
-    window.location.href = '/dashboard.html';
+    window.location.href = 'dashboard.html';
   }
 }
 
 async function logout() {
   localStorage.removeItem('session_token');
-  window.location.href = '/';
+  exitDemoMode();
+  window.location.href = 'index.html';
 }
