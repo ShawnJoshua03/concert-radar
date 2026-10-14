@@ -49,7 +49,7 @@ def get_concerts(request: Request):
                 })
                 artists_to_search = cur.fetchall()
 
-    # ── Step 2: Ticketmaster — outside DB transaction ─────────────────────────
+    # ── Step 2: Ticketmaster, outside the DB transaction ──────────────────────
     new_shows: list[dict] = []
     if needs_refresh:
         for artist in artists_to_search:

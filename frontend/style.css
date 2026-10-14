@@ -341,7 +341,7 @@ a { color: inherit; text-decoration: none; }
 }
 .demo-banner strong { color: var(--accent); }
 
-/* ── Concert card — image backdrop redesign ───────────────────── */
+/* ── Concert card: image backdrop ─────────────────────────────── */
 
 .concert-feed-grid {
   display: grid;

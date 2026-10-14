@@ -23,7 +23,7 @@ def _fetch_range(access_token: str, time_range: str) -> list[dict]:
         timeout=10,
     )
     if resp.status_code == 401:
-        raise HTTPException(status_code=401, detail="Spotify token expired — please log in again")
+        raise HTTPException(status_code=401, detail="Spotify token expired. Please log in again.")
     resp.raise_for_status()
     return resp.json().get("items", [])
 

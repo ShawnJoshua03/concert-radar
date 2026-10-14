@@ -74,14 +74,14 @@ def _request_refreshed_tokens(refresh_token: str) -> dict:
         timeout=10,
     )
     if token_resp.status_code in (400, 401):
-        raise HTTPException(status_code=401, detail="Spotify session expired — please log in again")
+        raise HTTPException(status_code=401, detail="Spotify session expired. Please log in again.")
     token_resp.raise_for_status()
     return token_resp.json()
 
 
 def _refresh_and_store(user: dict) -> str:
     if not user["refresh_token"]:
-        raise HTTPException(status_code=401, detail="Spotify session expired — please log in again")
+        raise HTTPException(status_code=401, detail="Spotify session expired. Please log in again.")
     tokens = _request_refreshed_tokens(user["refresh_token"])
     with get_db() as conn:
         with conn.cursor() as cur:
@@ -127,7 +127,7 @@ def callback(request: Request, code: str = None, state: str = None, error: str =
         return RedirectResponse(f"{frontend_url}?error={urllib.parse.quote(error)}")
 
     if not state or not _consume_state(state):
-        raise HTTPException(status_code=400, detail="State mismatch — possible CSRF")
+        raise HTTPException(status_code=400, detail="State mismatch (possible CSRF)")
 
     token_resp = httpx.post(
         _SPOTIFY_TOKEN_URL,
