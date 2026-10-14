@@ -13,7 +13,7 @@ const DEMO_USER = {
   city: DEMO_CITY,
 };
 
-// Each list is a "top artists" window, most-listened first — the shape Spotify returns.
+// Each list is a "top artists" window, most-listened first, matching what Spotify returns.
 const DEMO_TOP_LISTS = {
   short_term:  ['Velvet Static', 'Marigold Youth', 'The Lowlight Choir', 'Paper Comets', 'Neon Orchard',
                 'Saltwater Saints', 'Juniper Wire', 'Tin Lantern', 'Kite Hours', 'Sundial'],
@@ -44,13 +44,13 @@ const DEMO_GENRES = {
 
 // [artist, event name, venue, days from today, min price, max price]
 const DEMO_EVENTS = [
-  ['Velvet Static',      'Velvet Static — Haze Tour',          'The Lantern Room',      12,  32, 55],
+  ['Velvet Static',      'Velvet Static: Haze Tour',           'The Lantern Room',      12,  32, 55],
   ['Marigold Youth',     'Marigold Youth with Kite Hours',     'Riverside Pavilion',    26,  45, 89],
   ['Marigold Youth',     'Marigold Youth (late show)',         'Riverside Pavilion',    27,  45, 89],
   ['Paper Comets',       'Paper Comets: Small Rooms',          'Northside Social Club', 5,   18, 18],
   ['Harbor Lights',      'Harbor Lights 15th Anniversary',     'Lakeshore Amphitheater', 64, 39, 125],
   ['The Lowlight Choir', 'An Evening with The Lowlight Choir', 'St. Cecilia Hall',      41,  28, 40],
-  ['Neon Orchard',       'Neon Orchard — Afterglow',           'Warehouse 9',           19,  25, 35],
+  ['Neon Orchard',       'Neon Orchard: Afterglow',            'Warehouse 9',           19,  25, 35],
   ['Atlas Fawn',         'Atlas Fawn Live',                    'The Fulton Theater',    88,  35, 60],
   ['Copper Moth',        'Copper Moth / Polar Teeth',          'Basement East',         9,   15, 15],
   ['Juniper Wire',       'Juniper Wire',                       'Old Town Tavern',       33,  null, null],

@@ -19,7 +19,7 @@ async function getUser() {
   }
 }
 
-// Call on dashboard.html — redirects to the landing page if not logged in
+// Call on dashboard.html. Redirects to the landing page if not logged in
 async function requireAuth() {
   _extractTokenFromUrl();
   const user = await getUser();
@@ -30,7 +30,7 @@ async function requireAuth() {
   return user;
 }
 
-// Call on index.html — redirects to dashboard if already logged in
+// Call on index.html. Redirects to dashboard if already logged in
 async function requireGuest() {
   if (DEMO_MODE) return;  // the demo has no session; let visitors read the landing page
   const user = await getUser();

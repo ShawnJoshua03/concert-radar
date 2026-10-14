@@ -224,7 +224,7 @@
           backdrop.appendChild(img);
         }
 
-        // SVG arc — created via createElementNS for correct SVG namespace
+        // SVG arc, created via createElementNS for correct SVG namespace
         const affDiv = document.createElement('div');
         affDiv.className = 'concert-card-affinity';
 
@@ -287,7 +287,7 @@
         priceEl.className = 'concert-card-price';
         if (c.price_min != null) {
           priceEl.textContent = c.price_max && c.price_max !== c.price_min
-            ? `$${Math.round(c.price_min)}–$${Math.round(c.price_max)}`
+            ? `$${Math.round(c.price_min)} to $${Math.round(c.price_max)}`
             : `From $${Math.round(c.price_min)}`;
         }
 
