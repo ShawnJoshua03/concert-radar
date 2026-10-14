@@ -21,6 +21,8 @@ def geocode_city(city: str) -> tuple[float, float] | None:
         results = resp.json()
         if results:
             return float(results[0]["lat"]), float(results[0]["lon"])
-    except Exception:
+    except (httpx.HTTPError, ValueError, KeyError):
+        # Network failure, non-JSON body, or a result without coordinates.
+        # Callers treat None as "couldn't geocode" and ask the user to rephrase.
         pass
     return None
