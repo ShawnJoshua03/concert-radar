@@ -165,7 +165,7 @@
         renderConcerts(allConcerts);
         const ts = document.getElementById('last-updated');
         ts.textContent = data.total
-          ? `${data.total} show${data.total === 1 ? '' : 's'} · updated just now`
+          ? `${data.total} show${data.total === 1 ? '' : 's'}`
           : '';
       } catch (err) {
         feed.innerHTML = '<div class="empty-state"><p class="text-error"></p></div>';
