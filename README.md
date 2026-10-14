@@ -57,8 +57,8 @@ scores 100.
 ## Current state
 
 - The full flow works locally: Spotify login, sync, scoring, Ticketmaster search and the ranked feed.
-- 39 tests cover the scoring math, Ticketmaster matching and parsing, JWT auth, OAuth state, token
-  refresh and per-user caching. They need no network or database and finish in about a second.
+- 42 tests cover the scoring math, Ticketmaster matching and parsing, JWT auth, OAuth state, token
+  refresh, per-user caching and city geocoding. They need no network or database and finish in about a second.
   GitHub Actions runs them, plus `ruff`, on every push.
 - The demo is a static site: about 40 KB of HTML, CSS and JS, plus D3 from a CDN. It works on
   phone-sized screens.
@@ -211,6 +211,7 @@ concert-radar/
 ├── frontend/
 │   ├── index.html, dashboard.html, style.css
 │   └── js/  api.js, auth.js, charts.js, demo.js
+├── docs/screenshot.png         # README screenshot
 ├── scripts/dev.py              # setup/test/lint/run tasks that also work on Windows
 ├── schema.sql                  # schema and re-runnable migrations
 ├── render.yaml                 # Render blueprint for the API
