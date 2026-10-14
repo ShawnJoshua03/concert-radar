@@ -5,8 +5,8 @@ from difflib import SequenceMatcher
 import httpx
 
 _BASE_URL = "https://app.ticketmaster.com/discovery/v2/events.json"
-_DEFAULT_LAT = 39.1031   # Cincinnati fallback
-_DEFAULT_LNG = -84.5120
+DEFAULT_LAT = 39.1031   # Cincinnati fallback when the user hasn't set a city
+DEFAULT_LNG = -84.5120
 _RADIUS = 50
 _ATTRACTION_THRESHOLD = 0.70
 _FALLBACK_THRESHOLD   = 0.82
@@ -26,8 +26,8 @@ def _matches_artist(event: dict, artist_name: str) -> bool:
 
 def fetch_events_for_artist(
     artist_name: str,
-    lat: float = _DEFAULT_LAT,
-    lng: float = _DEFAULT_LNG,
+    lat: float = DEFAULT_LAT,
+    lng: float = DEFAULT_LNG,
 ) -> list[dict]:
     api_key = os.getenv("TICKETMASTER_API_KEY", "")
     if not api_key or api_key == "your_ticketmaster_api_key":
@@ -60,32 +60,37 @@ def fetch_events_for_artist(
     for event in events:
         if not _matches_artist(event, artist_name):
             continue
-
-        start = event.get("dates", {}).get("start", {})
-        date_str = start.get("dateTime") or start.get("localDate")
-        if not date_str:
-            continue
-        if "T" not in date_str:
-            date_str = f"{date_str}T12:00:00Z"
-
-        venues = event.get("_embedded", {}).get("venues", [])
-        venue = venues[0] if venues else {}
-        city  = venue.get("city", {}).get("name", "")
-        state = venue.get("state", {}).get("stateCode", "")
-        venue_city = f"{city}, {state}" if state else city
-
-        price_ranges = event.get("priceRanges", [])
-        price = price_ranges[0] if price_ranges else {}
-
-        results.append({
-            "event_id":   event["id"],
-            "event_name": event.get("name", ""),
-            "venue_name": venue.get("name", ""),
-            "venue_city": venue_city,
-            "event_date": date_str,
-            "ticket_url": event.get("url", ""),
-            "price_min":  price.get("min"),
-            "price_max":  price.get("max"),
-        })
-
+        parsed = _parse_event(event)
+        if parsed:
+            results.append(parsed)
     return results
+
+
+def _parse_event(event: dict) -> dict | None:
+    """Flattens a Ticketmaster event into a shows row; None if it has no date."""
+    start = event.get("dates", {}).get("start", {})
+    date_str = start.get("dateTime") or start.get("localDate")
+    if not date_str:
+        return None
+    if "T" not in date_str:
+        date_str = f"{date_str}T12:00:00Z"
+
+    venues = event.get("_embedded", {}).get("venues", [])
+    venue = venues[0] if venues else {}
+    city  = venue.get("city", {}).get("name", "")
+    state = venue.get("state", {}).get("stateCode", "")
+    venue_city = f"{city}, {state}" if state else city
+
+    price_ranges = event.get("priceRanges", [])
+    price = price_ranges[0] if price_ranges else {}
+
+    return {
+        "event_id":   event["id"],
+        "event_name": event.get("name", ""),
+        "venue_name": venue.get("name", ""),
+        "venue_city": venue_city,
+        "event_date": date_str,
+        "ticket_url": event.get("url", ""),
+        "price_min":  price.get("min"),
+        "price_max":  price.get("max"),
+    }

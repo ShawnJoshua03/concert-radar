@@ -1,14 +1,14 @@
-from typing import Optional
+
 from pydantic import BaseModel
 
 
 class UserResponse(BaseModel):
     id: str
     spotify_id: str
-    display_name: Optional[str] = None
-    email: Optional[str] = None
-    avatar_url: Optional[str] = None
-    city: Optional[str] = None
+    display_name: str | None = None
+    email: str | None = None
+    avatar_url: str | None = None
+    city: str | None = None
 
 
 class CityUpdate(BaseModel):
@@ -18,7 +18,7 @@ class CityUpdate(BaseModel):
 class ArtistResponse(BaseModel):
     artist_id: str
     artist_name: str
-    artist_image_url: Optional[str] = None
+    artist_image_url: str | None = None
     affinity_score: float
     genres: list[str] = []
 
@@ -31,15 +31,15 @@ class SyncResponse(BaseModel):
 class ConcertResponse(BaseModel):
     event_id: str
     event_name: str
-    venue_name: Optional[str] = None
-    venue_city: Optional[str] = None
-    event_date: Optional[str] = None
-    ticket_url: Optional[str] = None
-    price_min: Optional[float] = None
-    price_max: Optional[float] = None
+    venue_name: str | None = None
+    venue_city: str | None = None
+    event_date: str | None = None
+    ticket_url: str | None = None
+    price_min: float | None = None
+    price_max: float | None = None
     artist_id: str
     artist_name: str
-    artist_image_url: Optional[str] = None
+    artist_image_url: str | None = None
     affinity_score: float
     genres: list[str] = []
 

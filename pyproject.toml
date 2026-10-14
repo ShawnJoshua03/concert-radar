@@ -1,0 +1,32 @@
+[project]
+name = "concert-radar"
+version = "1.1.0"
+description = "Concerts near you, ranked by how much you actually listen to the artist."
+requires-python = ">=3.12"
+license = "MIT"
+
+[tool.ruff]
+target-version = "py312"
+line-length = 110
+src = ["backend"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM"]
+# B008: FastAPI-style defaults. E221/E241: aligned dict literals used across the codebase.
+# SIM117: nested `with get_db() as conn: with conn.cursor()` is the house idiom.
+# UP017: timezone.utc is clear and works on every supported Python.
+ignore = ["B008", "E221", "E241", "SIM117", "UP017"]
+
+[tool.ruff.lint.per-file-ignores]
+# load_dotenv() must run before app modules read os.environ at import time
+"backend/main.py" = ["E402"]
+# SQL strings read better unwrapped
+"backend/queries.py" = ["E501"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["artists", "auth", "concerts", "database", "geocoding", "main",
+                     "models", "queries", "ticketmaster_client", "users"]
+
+[tool.pytest.ini_options]
+testpaths = ["backend/tests"]
+pythonpath = ["backend"]

@@ -2,12 +2,16 @@ services:
   - type: web
     name: concert-radar-api
     runtime: python
+    plan: free
+    healthCheckPath: /
     rootDir: backend
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: ENVIRONMENT
         value: production
+      - key: PYTHON_VERSION
+        value: 3.12.7
       - key: SPOTIFY_CLIENT_ID
         sync: false
       - key: SPOTIFY_CLIENT_SECRET
@@ -21,4 +25,6 @@ services:
       - key: SECRET_KEY
         sync: false
       - key: FRONTEND_URL
+        sync: false
+      - key: NOMINATIM_CONTACT
         sync: false

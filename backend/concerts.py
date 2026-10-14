@@ -1,12 +1,12 @@
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request
 
 import queries
 from auth import get_current_user_id
 from database import get_db
 from models import ConcertResponse, ConcertsListResponse
-from ticketmaster_client import fetch_events_for_artist, _DEFAULT_LAT, _DEFAULT_LNG
+from ticketmaster_client import DEFAULT_LAT, DEFAULT_LNG, fetch_events_for_artist
 
 router = APIRouter()
 
@@ -14,12 +14,12 @@ _CACHE_TTL = timedelta(hours=6)
 _MAX_ARTISTS_TO_SEARCH = 20
 
 
-def _is_fresh(oldest_cache) -> bool:
-    if oldest_cache is None:
+def _is_fresh(fetched_at: datetime | None) -> bool:
+    if fetched_at is None:
         return False
-    if oldest_cache.tzinfo is None:
-        oldest_cache = oldest_cache.replace(tzinfo=timezone.utc)
-    return datetime.now(timezone.utc) - oldest_cache < _CACHE_TTL
+    if fetched_at.tzinfo is None:
+        fetched_at = fetched_at.replace(tzinfo=timezone.utc)
+    return datetime.now(timezone.utc) - fetched_at < _CACHE_TTL
 
 
 @router.get("", response_model=ConcertsListResponse)
@@ -31,13 +31,15 @@ def get_concerts(request: Request):
         with conn.cursor() as cur:
             cur.execute(queries.GET_USER_BY_ID, {"user_id": user_id})
             user = cur.fetchone()
-            lat = float(user["lat"]) if user and user["lat"] is not None else _DEFAULT_LAT
-            lng = float(user["lng"]) if user and user["lng"] is not None else _DEFAULT_LNG
+            if not user:
+                raise HTTPException(status_code=404, detail="User not found")
+            lat = float(user["lat"]) if user["lat"] is not None else DEFAULT_LAT
+            lng = float(user["lng"]) if user["lng"] is not None else DEFAULT_LNG
 
-            cur.execute(queries.GET_SHOWS_CACHE_AGE, {"user_id": user_id})
-            row = cur.fetchone()
-            oldest_cache = row["oldest_cache"] if row else None
-            needs_refresh = not _is_fresh(oldest_cache)
+            # Tracked per user (not via MIN(cached_at)) so a city with zero
+            # matching shows still counts as cached instead of re-querying
+            # Ticketmaster on every page load.
+            needs_refresh = not _is_fresh(user["concerts_fetched_at"])
 
             artists_to_search = []
             if needs_refresh:
@@ -52,15 +54,17 @@ def get_concerts(request: Request):
     if needs_refresh:
         for artist in artists_to_search:
             for ev in fetch_events_for_artist(artist["artist_name"], lat, lng):
-                new_shows.append({"artist_id": artist["artist_id"], **ev})
+                new_shows.append({"user_id": user_id, "artist_id": artist["artist_id"], **ev})
 
     # ── Step 3: persist + return ──────────────────────────────────────────────
     with get_db() as conn:
         with conn.cursor() as cur:
             if needs_refresh:
+                cur.execute(queries.DELETE_USER_SHOWS, {"user_id": user_id})
                 for show in new_shows:
                     cur.execute(queries.UPSERT_SHOW, show)
                 cur.execute(queries.DELETE_STALE_SHOWS)
+                cur.execute(queries.MARK_CONCERTS_FETCHED, {"user_id": user_id})
 
             cur.execute(queries.GET_CONCERTS_FOR_USER, {"user_id": user_id})
             rows = cur.fetchall()

@@ -20,6 +20,11 @@
     </div>
   </header>
 
+  <div id="demo-banner" class="demo-banner hidden">
+    <strong>Demo mode</strong>: fictional artists and shows, scored with the real affinity algorithm.
+    <a href="https://github.com/ShawnJoshua03/concert-radar">How it works →</a>
+  </div>
+
   <div class="layout">
 
     <!-- Sidebar: top artists + D3 affinity chart -->
@@ -57,11 +62,6 @@
           <option value="30">Next 30 days</option>
           <option value="90">Next 3 months</option>
         </select>
-        <select class="filter-select" id="filter-radius">
-          <option value="50">Within 50 mi</option>
-          <option value="25">Within 25 mi</option>
-          <option value="100">Within 100 mi</option>
-        </select>
       </div>
 
       <div id="feed-container">
@@ -74,7 +74,8 @@
     </main>
   </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
+  <script src="js/demo.js"></script>
   <script src="js/api.js"></script>
   <script src="js/auth.js"></script>
   <script src="js/charts.js"></script>
@@ -82,6 +83,8 @@
     document.addEventListener('DOMContentLoaded', async () => {
       const user = await requireAuth();
       if (!user) return;
+
+      if (DEMO_MODE) document.getElementById('demo-banner').classList.remove('hidden');
 
       // Populate header
       document.getElementById('header-name').textContent = user.display_name || user.email || '';
@@ -96,6 +99,9 @@
       }
 
       document.getElementById('logout-btn').addEventListener('click', logout);
+      if (DEMO_MODE) document.getElementById('logout-btn').textContent = 'Exit demo';
+
+      document.getElementById('filter-date').addEventListener('change', () => renderConcerts(allConcerts));
 
       const cityBtn = document.getElementById('city-btn');
       cityBtn.addEventListener('click', async () => {
@@ -141,18 +147,29 @@
       });
     });
 
+    let allConcerts = [];
+
+    function applyDateFilter(concerts) {
+      const days = Number(document.getElementById('filter-date').value);
+      if (!days) return concerts;
+      const cutoff = Date.now() + days * 24 * 60 * 60 * 1000;
+      return concerts.filter(c => c.event_date && new Date(c.event_date).getTime() <= cutoff);
+    }
+
     async function loadConcerts() {
       const feed = document.getElementById('feed-container');
       feed.innerHTML = '<div class="empty-state"><p class="skeleton" style="width:60%;height:14px;margin:0 auto"></p></div>';
       try {
         const data = await apiFetch('/concerts');
-        renderConcerts(data.concerts);
+        allConcerts = data.concerts;
+        renderConcerts(allConcerts);
         const ts = document.getElementById('last-updated');
         ts.textContent = data.total
           ? `${data.total} show${data.total === 1 ? '' : 's'} · updated just now`
           : '';
       } catch (err) {
-        feed.innerHTML = `<div class="empty-state"><p class="text-error">${err.message}</p></div>`;
+        feed.innerHTML = '<div class="empty-state"><p class="text-error"></p></div>';
+        feed.querySelector('.text-error').textContent = err.message;
       }
     }
 
@@ -160,73 +177,127 @@
       createAffinityChart('#artists-container', artists);
     }
 
-    function renderConcerts(concerts) {
+    function renderConcerts(allShows) {
       const feed = document.getElementById('feed-container');
-      if (!concerts.length) {
+      if (!allShows.length) {
         feed.innerHTML = '<div class="empty-state"><p>No upcoming shows found in your area.</p><p>Try a different city or sync your library again.</p></div>';
         return;
       }
 
       document.getElementById('filter-bar').classList.remove('hidden');
+      const concerts = applyDateFilter(allShows);
+      if (!concerts.length) {
+        feed.innerHTML = '<div class="empty-state"><p>No shows in that date range.</p><p>Try a wider window.</p></div>';
+        return;
+      }
       feed.innerHTML = '';
 
+      const grid = document.createElement('div');
+      grid.className = 'concert-feed-grid';
+
+      const NS   = 'http://www.w3.org/2000/svg';
+      const R    = 18;
+      const CIRC = 2 * Math.PI * R;
+
       concerts.forEach(c => {
-        const a = document.createElement('a');
-        a.href = c.ticket_url || '#';
-        a.target = '_blank';
-        a.rel = 'noopener noreferrer';
+        const arcLen = (Math.min(c.affinity_score, 100) / 100) * CIRC;
 
-        const card = document.createElement('div');
-        card.className = 'card';
+        // ── Card link wrapper ───────────────────────────────────────
+        const link = document.createElement('a');
+        link.className = 'concert-card';
+        if (c.ticket_url) {
+          link.href   = c.ticket_url;
+          link.target = '_blank';
+          link.rel    = 'noopener noreferrer';
+        }
 
-        const img = document.createElement('img');
-        img.className = 'card-artist-img';
-        img.src = c.artist_image_url || '';
-        img.alt = c.artist_name;
-        img.onerror = () => { img.style.display = 'none'; };
+        // ── Backdrop: photo + gradient overlay + affinity ring ──────
+        const backdrop = document.createElement('div');
+        backdrop.className = 'concert-card-backdrop';
 
-        const body = document.createElement('div');
-        body.className = 'card-body';
+        if (c.artist_image_url) {
+          const img = document.createElement('img');
+          img.className = 'concert-card-img';
+          img.src       = c.artist_image_url;
+          img.alt       = c.artist_name;
+          img.onerror   = () => { img.style.display = 'none'; };
+          backdrop.appendChild(img);
+        }
 
-        const top = document.createElement('div');
-        top.className = 'card-top';
-        const artistSpan = document.createElement('span');
-        artistSpan.className = 'card-artist';
-        artistSpan.textContent = c.artist_name;
-        const badge = document.createElement('span');
-        badge.className = 'badge';
-        badge.textContent = `${Math.round(c.affinity_score)} affinity`;
-        top.append(artistSpan, badge);
+        // SVG arc — created via createElementNS for correct SVG namespace
+        const affDiv = document.createElement('div');
+        affDiv.className = 'concert-card-affinity';
 
-        const eventDiv = document.createElement('div');
-        eventDiv.className = 'card-event';
-        eventDiv.textContent = c.event_name;
+        const svg = document.createElementNS(NS, 'svg');
+        svg.setAttribute('viewBox', '0 0 44 44');
+        svg.setAttribute('class', 'affinity-ring');
 
-        const venueDiv = document.createElement('div');
-        venueDiv.className = 'card-venue';
-        venueDiv.textContent = [c.venue_name, c.venue_city].filter(Boolean).join(' · ');
+        const bgCircle = document.createElementNS(NS, 'circle');
+        bgCircle.setAttribute('cx', '22');
+        bgCircle.setAttribute('cy', '22');
+        bgCircle.setAttribute('r', R);
+        bgCircle.setAttribute('class', 'affinity-ring-bg');
+
+        const fillCircle = document.createElementNS(NS, 'circle');
+        fillCircle.setAttribute('cx', '22');
+        fillCircle.setAttribute('cy', '22');
+        fillCircle.setAttribute('r', R);
+        fillCircle.setAttribute('class', 'affinity-ring-fill');
+        fillCircle.style.strokeDasharray = `0 ${CIRC.toFixed(1)}`;
+
+        const ringLabel = document.createElement('div');
+        ringLabel.className = 'affinity-ring-label';
+        ringLabel.textContent = Math.round(c.affinity_score);
+
+        svg.append(bgCircle, fillCircle);
+        affDiv.append(svg, ringLabel);
+        backdrop.appendChild(affDiv);
+
+        // Animate arc in after paint so the CSS transition fires
+        requestAnimationFrame(() => requestAnimationFrame(() => {
+          fillCircle.style.strokeDasharray = `${arcLen.toFixed(1)} ${CIRC.toFixed(1)}`;
+        }));
+
+        // ── Text content ────────────────────────────────────────────
+        const content = document.createElement('div');
+        content.className = 'concert-card-content';
+
+        const artistEl = document.createElement('div');
+        artistEl.className = 'concert-card-artist';
+        artistEl.textContent = c.artist_name;
+
+        const eventEl = document.createElement('div');
+        eventEl.className = 'concert-card-event';
+        eventEl.textContent = c.event_name;
+
+        const venueEl = document.createElement('div');
+        venueEl.className = 'concert-card-venue';
+        venueEl.textContent = [c.venue_name, c.venue_city].filter(Boolean).join(' · ');
 
         const footer = document.createElement('div');
-        footer.className = 'card-footer';
-        const dateSpan = document.createElement('span');
-        dateSpan.className = 'card-date';
-        dateSpan.textContent = c.event_date
+        footer.className = 'concert-card-footer';
+
+        const dateEl = document.createElement('span');
+        dateEl.className = 'concert-card-date';
+        dateEl.textContent = c.event_date
           ? new Date(c.event_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
           : '';
-        const priceSpan = document.createElement('span');
-        priceSpan.className = 'card-price';
+
+        const priceEl = document.createElement('span');
+        priceEl.className = 'concert-card-price';
         if (c.price_min != null) {
-          priceSpan.textContent = c.price_max && c.price_max !== c.price_min
+          priceEl.textContent = c.price_max && c.price_max !== c.price_min
             ? `$${Math.round(c.price_min)}–$${Math.round(c.price_max)}`
             : `From $${Math.round(c.price_min)}`;
         }
-        footer.append(dateSpan, priceSpan);
 
-        body.append(top, eventDiv, venueDiv, footer);
-        card.append(img, body);
-        a.appendChild(card);
-        feed.appendChild(a);
+        footer.append(dateEl, priceEl);
+        content.append(artistEl, eventEl, venueEl, footer);
+        link.append(backdrop, content);
+        grid.appendChild(link);
       });
+
+      feed.appendChild(grid);
     }
   </script>
 

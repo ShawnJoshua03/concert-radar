@@ -1,240 +1,261 @@
 # Concert Radar
 
-**Find upcoming concerts ranked by how much you actually listen to the artist.**
+**Upcoming concerts near you, ranked by how much you actually listen to the artist.**
 
-Most concert apps sort by date or distance. Concert Radar sorts by *you* — it connects to your Spotify listening history, scores every artist with a weighted affinity algorithm across three time windows, then searches Ticketmaster for shows near your city. The artists you play on repeat always appear first.
+[![CI](https://github.com/ShawnJoshua03/concert-radar/actions/workflows/ci.yml/badge.svg)](https://github.com/ShawnJoshua03/concert-radar/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![Live demo](https://img.shields.io/badge/demo-live-1db954)](https://shawnjoshua03.github.io/concert-radar/)
+![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-0.111-009688?logo=fastapi&logoColor=white)
+![D3.js](https://img.shields.io/badge/D3.js-v7-F9A03C?logo=d3.js&logoColor=white)
 
-![Python](https://img.shields.io/badge/Python-3.12-3776AB?style=flat-square&logo=python&logoColor=white)
-![FastAPI](https://img.shields.io/badge/FastAPI-0.111-009688?style=flat-square&logo=fastapi&logoColor=white)
-![PostgreSQL](https://img.shields.io/badge/PostgreSQL-Supabase-3ECF8E?style=flat-square&logo=supabase&logoColor=white)
-![JavaScript](https://img.shields.io/badge/JavaScript-ES2022-F7DF1E?style=flat-square&logo=javascript&logoColor=black)
-![D3.js](https://img.shields.io/badge/D3.js-v7-F9A03C?style=flat-square&logo=d3.js&logoColor=white)
+### ▶ [Live demo](https://shawnjoshua03.github.io/concert-radar/): no account needed
 
----
+[![Concert Radar dashboard](docs/screenshot.png)](https://shawnjoshua03.github.io/concert-radar/)
 
-## How It Works
-
-```
-  Spotify OAuth            Affinity Scoring         Ticketmaster Search
-  ─────────────            ────────────────         ───────────────────
-  Top artists ──► short_term  (w=3) ──►  raw score  ──►  keyword search
-  (3 windows)     medium_term (w=2)       ÷ 300          per artist
-                  long_term   (w=1)       × 100     ──►  fuzzy match
-                                          = 0–100        to Spotify ID
-                                              │
-                                              ▼
-                                      Ranked concert feed
-                                      (affinity ↓, date ↑)
-```
-
-1. **Connect Spotify** — OAuth 2.0 login pulls your top 50 artists across three listening windows (last 4 weeks, last 6 months, all time) and stores them with rank position data.
-
-2. **Affinity scoring** — each artist earns a 0–100 score that rewards recent heavy listening while still crediting long-term favourites. Scores persist in PostgreSQL and update on every sync.
-
-3. **Concert search** — Ticketmaster is queried for each of your top 20 artists within 50 miles of your city. A `difflib` fuzzy matcher confirms each result actually belongs to the right artist before it's cached.
-
-4. **Ranked feed** — results are sorted by affinity descending so the shows you'll care most about are always at the top. Ticketmaster data is cached for 6 hours; updating your city wipes the cache and re-fetches immediately.
+> The hosted demo runs entirely in the browser on **fictional** artists and shows, scored by the same
+> affinity algorithm as the backend. Real Spotify login needs the backend running; see
+> [Quickstart](#quickstart) and [Limitations](#limitations).
 
 ---
 
-## Affinity Score
+## The problem
 
-Spotify exposes listening history across three time windows. Concert Radar fetches all three and weights them to reward **recent** heavy listening over stale long-term history:
+Concert apps sort by date or distance. When you follow hundreds of artists, the show you'd actually
+cross town for is buried under ones you'd skip. Your streaming history already knows who you care
+about. Nothing connects the two.
 
-| Time window | Covers | Weight |
-|-------------|--------|--------|
-| `short_term` | Last ~4 weeks | **3×** |
+## The approach
+
+1. **Connect Spotify.** OAuth 2.0 pulls your top 50 artists in three windows: the last ~4 weeks,
+   ~6 months, and all time.
+2. **Score affinity.** Each artist gets a 0–100 score that rewards *recent* heavy listening while
+   still crediting long-term favourites (details below).
+3. **Search Ticketmaster.** For your top 20 artists, search for music events within 50 miles of your
+   city (geocoded with OpenStreetMap Nominatim). A fuzzy matcher drops tribute acts and keyword
+   collisions.
+4. **Ranked feed.** Shows are sorted by affinity, then date. Results are cached per user for 6 hours.
+
+### Affinity score
+
+Spotify's API exposes ranked *top artists*, not play counts, so the score is rank-based:
+
+| Window        | Covers         | Weight |
+|---------------|----------------|:------:|
+| `short_term`  | Last ~4 weeks  | **3×** |
 | `medium_term` | Last ~6 months | **2×** |
-| `long_term` | All time | **1×** |
-
-For each window the artist appears in, their list position is converted to a rank score and multiplied by the window weight:
+| `long_term`   | All time       | **1×** |
 
 ```
-rank_score   = 50 − list_index        # index 0 (most listened) → 50 pts
-                                       # index 49 (least)        →  1 pt
-contribution = rank_score × weight
-
-raw_score = Σ contributions across every window the artist appears in
-affinity  = round(raw_score / 300 × 100, 2)
+rank_score   = 50 − list_index          # #1 → 50 points, #50 → 1 point
+raw_score    = Σ rank_score × weight     # over every window the artist appears in
+affinity     = raw_score / 300 × 100     # 300 = #1 in all three windows
 ```
 
-The denominator **300** is the theoretical maximum — an artist ranked #1 in all three windows scores `(50×3) + (50×2) + (50×1) = 300`, which normalises to **100.00**. An artist you've only just started playing will score lower than one you've listened to for years *and* are currently obsessed with.
+An artist you've played on repeat this month (#1 short-term only) scores 50. An all-time favourite
+you haven't played lately (#1 long-term only) scores 16.7. One who is both scores 100.
 
-The D3 sidebar chart scales bars relative to your personal top artist, so the comparison is always meaningful regardless of absolute score values.
+## Results
+
+What the project does today, stated plainly:
+
+- **End-to-end flow works locally**: Spotify login → sync → scoring → Ticketmaster search → ranked feed.
+- **39 automated tests** covering scoring math, Ticketmaster matching and parsing, JWT auth, OAuth
+  state, token refresh, and per-user caching. They run in about 1 second with no network or database.
+  CI runs them plus `ruff` on every push.
+- **The demo is static and fast**: about 40 KB of first-party HTML, CSS and JS plus D3 from a CDN,
+  with no backend round trip. It has a responsive layout down to phone widths.
+- **No accuracy metrics for the matcher yet.** The Ticketmaster fuzzy-match thresholds (0.70 for
+  attraction names, 0.82 for event titles) were tuned by hand against real searches, not against a
+  labelled dataset.
+
+## Limitations
+
+- **Spotify login is allowlist-only.** New Spotify apps run in Development Mode, where only users
+  added in the developer dashboard can log in. That's why the public link is a demo.
+- **Ticketmaster only.** It doesn't cover AXS, Dice, Eventbrite or independent venues. The free API
+  tier is rate-limited, and the 20 artist searches run sequentially, so the first uncached load
+  takes a few seconds.
+- **Fixed 50-mile radius** around the saved city.
+- **Single-instance backend.** OAuth `state` values live in process memory, so running more than
+  one worker would break login.
+- **Security trade-offs suited to a portfolio project, not production.** Spotify tokens are stored
+  unencrypted in Postgres. The session JWT lives in `localStorage` and arrives once in the redirect
+  URL.
+- **SQL isn't exercised in CI.** The tests use a fake database layer, so query typos would only
+  show up against a real Postgres.
+- **Free hosting:** the Render free tier sleeps after inactivity (expect a cold start of about a
+  minute), and Supabase pauses projects that sit idle for a week.
 
 ---
 
-## Tech Stack
+## Architecture
 
-| Layer | Technology | Notes |
-|-------|-----------|-------|
-| Backend API | Python 3.12, FastAPI | Async-ready; Pydantic v2 models |
-| Database | PostgreSQL via Supabase | Connection pooling via psycopg2 |
-| Authentication | Spotify OAuth 2.0 + HS256 JWT | Token stored in `localStorage`; sent as `Authorization: Bearer` |
-| Frontend | Vanilla JS (ES2022) | No build step; ships directly to Vercel |
-| Visualisation | D3.js v7 | `createAffinityChart(selector, data, options)` reusable bar chart |
-| Geocoding | OpenStreetMap Nominatim | Free, no key required |
-| Concert data | Ticketmaster Discovery API | Fuzzy-matched with `difflib.SequenceMatcher` |
-| Hosting | Vercel (frontend) + Render (backend) | |
+```mermaid
+flowchart LR
+    subgraph Browser["Browser (static: GitHub Pages / any host)"]
+        UI["index.html · dashboard.html<br/>D3 affinity chart"]
+        API["api.js<br/>apiFetch()"]
+        DEMO["demo.js<br/>sample data"]
+        UI --> API
+        API -- "demo mode" --> DEMO
+    end
 
----
+    subgraph Backend["FastAPI (Render)"]
+        AUTH["auth.py<br/>OAuth + JWT"]
+        ART["artists.py<br/>affinity scoring"]
+        CON["concerts.py<br/>6h per-user cache"]
+        USR["users.py<br/>city → lat/lng"]
+    end
 
-## Project Structure
+    API -- "Bearer JWT" --> AUTH & ART & CON & USR
+    AUTH <--> SP[(Spotify Web API)]
+    ART <--> SP
+    CON <--> TM[(Ticketmaster<br/>Discovery API)]
+    USR <--> OSM[(Nominatim)]
+    AUTH & ART & CON & USR <--> DB[(PostgreSQL<br/>Supabase)]
+```
+
+| Layer        | Technology                                 | Notes |
+|--------------|--------------------------------------------|-------|
+| Backend      | Python 3.12, FastAPI, Pydantic v2          | All SQL in `queries.py`; response models in `models.py` |
+| Database     | PostgreSQL (Supabase)                      | `users`, `user_artists`, per-user `shows` cache |
+| Auth         | Spotify OAuth 2.0 + HS256 JWT              | Bearer token avoids cross-site cookie issues between frontend and API hosts |
+| Frontend     | Vanilla JS, no build step                  | `createAffinityChart(selector, data, options)` reusable D3 chart |
+| Data sources | Spotify Web API, Ticketmaster Discovery, Nominatim | |
+| Quality      | pytest, ruff, GitHub Actions               | |
+| Hosting      | GitHub Pages (demo) · Render (API)         | |
+
+## Quickstart
+
+**Just the demo (no keys needed):**
+
+```bash
+python scripts/dev.py web          # → http://127.0.0.1:3000/?demo
+```
+
+**Full app.** You need Python 3.12+, a free [Supabase](https://supabase.com) project, a
+[Spotify app](https://developer.spotify.com/dashboard) with redirect URI
+`http://127.0.0.1:8000/auth/callback`, and a free
+[Ticketmaster API key](https://developer-acct.ticketmaster.com/user/register).
+
+```bash
+python scripts/dev.py setup        # creates .venv, installs deps, copies backend/.env.example → backend/.env
+# fill in backend/.env, then run schema.sql in the Supabase SQL editor
+python scripts/dev.py api          # FastAPI on http://127.0.0.1:8000  (docs at /docs)
+python scripts/dev.py web          # frontend on http://127.0.0.1:3000 (in a second terminal)
+python scripts/dev.py test         # pytest
+python scripts/dev.py lint         # ruff
+```
+
+Use `127.0.0.1` rather than `localhost` throughout: Spotify's redirect URI must match exactly.
+
+<details>
+<summary><b>Environment variables</b></summary>
+
+| Variable | Required | Description |
+|----------|:--------:|-------------|
+| `SPOTIFY_CLIENT_ID` / `SPOTIFY_CLIENT_SECRET` | ✅ | Spotify Developer Dashboard |
+| `SPOTIFY_REDIRECT_URI` | ✅ | `http://127.0.0.1:8000/auth/callback` locally; `<api-url>/auth/callback` in production |
+| `TICKETMASTER_API_KEY` | ✅ | Ticketmaster Developer Portal |
+| `DATABASE_URL` | ✅ | Supabase → Settings → Database → Connection string (URI) |
+| `SECRET_KEY` | ✅ | `python -c "import secrets; print(secrets.token_hex(32))"` |
+| `FRONTEND_URL` | ✅ | Full URL of `dashboard.html`; used as the post-login redirect and CORS origin |
+| `NOMINATIM_CONTACT` | | Email or URL for the Nominatim User-Agent |
+| `ENVIRONMENT` | | `development` (default) or `production` |
+
+</details>
+
+<details>
+<summary><b>API reference</b></summary>
+
+| Method | Path | Auth | Description |
+|--------|------|:----:|-------------|
+| `GET`  | `/auth/login` | | Redirects to the Spotify consent screen |
+| `GET`  | `/auth/callback` | | Exchanges the code, upserts the user, redirects to `FRONTEND_URL?token=` |
+| `GET`  | `/auth/me` | ✅ | Current user profile |
+| `POST` | `/auth/refresh` | ✅ | Refreshes the stored Spotify token (also done automatically on sync) |
+| `GET`  | `/artists` | ✅ | Stored top artists with affinity scores |
+| `POST` | `/artists/sync` | ✅ | Re-fetches top artists, recomputes scores, prunes artists that dropped out |
+| `GET`  | `/concerts` | ✅ | Upcoming shows near the user, sorted by affinity (6 h per-user cache) |
+| `POST` | `/user/city` | ✅ | Geocodes and saves a city, invalidates the concert cache |
+
+</details>
+
+<details>
+<summary><b>Deploying your own</b></summary>
+
+- **Frontend:** `.github/workflows/pages.yml` publishes `frontend/` to GitHub Pages on every push
+  to `main`. Paths are relative, so it works under a repo subpath.
+- **Backend:** in Render, choose **New → Blueprint** and select this repo. `render.yaml` defines a
+  free web service. Fill in the env vars, setting `FRONTEND_URL` to your Pages URL plus
+  `/dashboard.html`. Then set `PROD_API_BASE` in `frontend/js/api.js` to the Render URL. The site
+  leaves demo mode automatically once a backend is configured, and `?demo` still opts back in.
+- Add `<render-url>/auth/callback` as a redirect URI in your Spotify app, and add each tester's
+  Spotify email under **User Management**.
+
+</details>
+
+## Project structure
 
 ```
 concert-radar/
 ├── backend/
-│   ├── main.py                  # FastAPI app + CORS middleware
-│   ├── auth.py                  # Spotify OAuth flow, JWT helpers, /auth/* routes
-│   ├── artists.py               # /artists/sync + /artists (affinity computation)
-│   ├── concerts.py              # /concerts (6-hour cache + Ticketmaster dispatch)
-│   ├── users.py                 # /user/city (geocode + save + cache invalidation)
-│   ├── ticketmaster_client.py   # Ticketmaster API wrapper + fuzzy artist matching
-│   ├── geocoding.py             # Nominatim geocoder
-│   ├── queries.py               # All SQL — never inline
-│   ├── models.py                # Pydantic response models
-│   ├── database.py              # psycopg2 context manager
-│   ├── requirements.txt
-│   └── .env.example
+│   ├── main.py                 # FastAPI app + CORS
+│   ├── auth.py                 # Spotify OAuth, JWT sessions, token refresh
+│   ├── artists.py              # /artists, /artists/sync, affinity scoring
+│   ├── concerts.py             # /concerts, per-user 6h cache
+│   ├── users.py                # /user/city
+│   ├── ticketmaster_client.py  # Discovery API wrapper + fuzzy artist matching
+│   ├── geocoding.py            # Nominatim
+│   ├── queries.py              # all SQL
+│   ├── models.py               # Pydantic response models
+│   ├── database.py             # psycopg2 connection context manager
+│   └── tests/                  # pytest suite (fake DB, no network)
 ├── frontend/
-│   ├── index.html               # Landing / login page
-│   ├── dashboard.html           # Main application
-│   ├── style.css
-│   └── js/
-│       ├── api.js               # apiFetch — all HTTP calls centralised here
-│       ├── auth.js              # requireAuth, requireGuest, logout
-│       └── charts.js            # createAffinityChart D3 reusable function
-├── schema.sql                   # PostgreSQL schema + Phase 4 migration
-├── vercel.json                  # Static frontend deployment config
-├── render.yaml                  # Backend service definition
-└── README.md
+│   ├── index.html · dashboard.html · style.css
+│   └── js/  api.js · auth.js · charts.js · demo.js
+├── scripts/dev.py              # cross-platform setup/test/lint/run tasks
+├── schema.sql                  # schema + idempotent migrations
+├── render.yaml                 # Render blueprint for the API
+└── .github/workflows/          # CI + Pages deploy
 ```
 
----
+## Design decisions & what I learned
 
-## Local Development
-
-### Prerequisites
-
-- Python 3.12+
-- A [Supabase](https://supabase.com) project (free tier)
-- A [Spotify Developer app](https://developer.spotify.com/dashboard) with `http://127.0.0.1:8000/auth/callback` added as a Redirect URI
-- A [Ticketmaster API key](https://developer-acct.ticketmaster.com/user/register) (free)
-- Any static file server (`python -m http.server`, `npx serve`, VS Code Live Server, etc.)
-
-### 1. Database
-
-Paste the contents of `schema.sql` into your Supabase SQL editor and run it. If you're upgrading an existing database, the `ALTER TABLE` lines at the bottom add the Phase 4 `lat`/`lng` columns safely.
-
-### 2. Backend
-
-```bash
-cd backend
-python -m venv .venv
-
-# Windows
-.venv\Scripts\activate
-# macOS / Linux
-source .venv/bin/activate
-
-pip install -r requirements.txt
-cp .env.example .env
-# Edit .env — fill in all values before continuing
-```
-
-Generate a `SECRET_KEY`:
-```bash
-python -c "import secrets; print(secrets.token_hex(32))"
-```
-
-Start the API:
-```bash
-uvicorn main:app --host 127.0.0.1 --port 8000 --reload
-```
-
-The API will be available at `http://127.0.0.1:8000`. Interactive docs at `/docs`.
-
-### 3. Frontend
-
-Serve `frontend/` on `127.0.0.1:3000` (**not** `localhost:3000` — see note below):
-
-```bash
-# Python
-python -m http.server 3000 --bind 127.0.0.1 --directory frontend
-
-# Node
-npx serve frontend -l tcp://127.0.0.1:3000
-```
-
-Open `http://127.0.0.1:3000` and click **Connect with Spotify**.
-
-> **Why `127.0.0.1` instead of `localhost`?**
-> Browsers treat `localhost` and `127.0.0.1` as different origins. The JWT is sent in the `Authorization` header so there's no cookie issue, but `SPOTIFY_REDIRECT_URI` is registered as `127.0.0.1:8000/auth/callback`. Keeping everything on the same IP avoids mismatches during the OAuth redirect dance.
-
----
-
-## Deployment
-
-### Backend → Render
-
-`render.yaml` at the project root defines the service. To deploy:
-
-1. Push the repo to GitHub
-2. In [Render](https://render.com), create a new **Web Service** and connect your repo
-3. Render detects `render.yaml` automatically — confirm the settings
-4. In the **Environment** tab, add all variables from the table below
-5. Set `SPOTIFY_REDIRECT_URI` to `https://your-service.onrender.com/auth/callback`
-6. Set `FRONTEND_URL` to `https://your-app.vercel.app/dashboard.html`
-7. Deploy
-
-### Frontend → Vercel
-
-`vercel.json` at the project root handles routing. To deploy:
-
-1. In [Vercel](https://vercel.com), import the GitHub repo
-2. Leave all build settings at their defaults — `vercel.json` handles everything
-3. Before deploying, update the production `API_BASE` in `frontend/js/api.js`:
-   ```js
-   : 'https://your-service.onrender.com'  // replace placeholder
-   ```
-4. Deploy — Vercel serves `frontend/` as a static site
-
----
-
-## Environment Variables
-
-| Variable | Required | Description |
-|----------|:--------:|-------------|
-| `SPOTIFY_CLIENT_ID` | ✅ | From the Spotify Developer Dashboard |
-| `SPOTIFY_CLIENT_SECRET` | ✅ | From the Spotify Developer Dashboard |
-| `SPOTIFY_REDIRECT_URI` | ✅ | `http://127.0.0.1:8000/auth/callback` locally; your Render URL + `/auth/callback` in production |
-| `TICKETMASTER_API_KEY` | ✅ | From the Ticketmaster Developer Portal |
-| `DATABASE_URL` | ✅ | Supabase URI — **Settings → Database → Connection string (URI)** |
-| `SECRET_KEY` | ✅ | 64-char hex string for HS256 JWT signing |
-| `FRONTEND_URL` | ✅ | Full URL to `dashboard.html` — used as the post-OAuth redirect target |
-| `ENVIRONMENT` | | `development` (default) or `production` |
-
----
-
-## API Reference
-
-| Method | Path | Auth | Description |
-|--------|------|:----:|-------------|
-| `GET` | `/auth/login` | — | Redirects to Spotify OAuth consent screen |
-| `GET` | `/auth/callback` | — | Handles Spotify callback; issues JWT via redirect to `FRONTEND_URL?token=` |
-| `GET` | `/auth/me` | ✅ | Returns the authenticated user's profile |
-| `POST` | `/auth/logout` | ✅ | No-op (client clears `localStorage`) |
-| `GET` | `/artists` | ✅ | Returns stored top artists with affinity scores |
-| `POST` | `/artists/sync` | ✅ | Re-fetches Spotify top artists and recomputes affinity scores |
-| `GET` | `/concerts` | ✅ | Returns upcoming shows near the user's city, sorted by affinity; Ticketmaster results cached 6 h |
-| `POST` | `/user/city` | ✅ | Geocodes and saves a new city via Nominatim; invalidates concert cache |
-
-Auth endpoints marked ✅ require `Authorization: Bearer <token>` header.
-
----
+- **Rank-based scoring with a recency bias.** Spotify doesn't expose play counts through this API,
+  only ordered top lists. Weighting the three windows 3/2/1 and normalising against the theoretical
+  max (300) gives a stable 0–100 score. "Currently obsessed" beats "liked years ago", and an artist
+  who is both wins.
+- **A cache keyed by the wrong thing is a correctness bug, not a performance one.** v1 cached shows
+  globally by artist. Two users in different cities who shared an artist saw each other's local
+  shows, and changing your city deleted other users' cache. Scoping the cache to the user, and
+  tracking `concerts_fetched_at` instead of inferring freshness from `MIN(cached_at)`, fixed both.
+  It also fixed a quieter problem: cities with zero matching shows used to re-query Ticketmaster on
+  every page load.
+- **Tokens expire in production, not in demos.** Spotify access tokens last an hour. The refresh
+  endpoint existed but nothing called it, so sync broke an hour after login. Sync now refreshes
+  transparently 60 s before expiry.
+- **Bearer tokens over cookies** because the frontend and API live on different domains (Pages and
+  Render). Third-party cookie rules make cookie sessions brittle there. The OAuth `state` is kept
+  server-side for the same reason: `localhost` and `127.0.0.1` are different cookie origins.
+- **Fuzzy matching is necessary.** Ticketmaster keyword search returns tribute bands, festivals and
+  name collisions. Matching against the event's *attractions* with `difflib` (and a stricter
+  threshold when falling back to the event title) removes most of them.
+- **Demo mode as a drop-in for the network layer.** Every request already went through `apiFetch()`,
+  so the demo swaps the transport and leaves the rendering code untouched. The demo exercises the
+  real UI, and the convention "all HTTP goes through `api.js`" paid off.
+- **Testable without infrastructure.** Keeping SQL in one module and opening connections through a
+  single `get_db()` made it easy to substitute a recording fake in tests. The trade-off is that SQL
+  correctness needs a real Postgres to verify (see Limitations).
 
 ## Acknowledgements
 
-- [Spotify Web API](https://developer.spotify.com/documentation/web-api) — listening history and artist data
-- [Ticketmaster Discovery API](https://developer.ticketmaster.com/products-and-docs/apis/discovery-api/v2/) — event and venue data
-- [OpenStreetMap Nominatim](https://nominatim.openstreetmap.org) — free geocoding
+[Spotify Web API](https://developer.spotify.com/documentation/web-api) ·
+[Ticketmaster Discovery API](https://developer.ticketmaster.com/products-and-docs/apis/discovery-api/v2/) ·
+[OpenStreetMap Nominatim](https://nominatim.org/). This project is not affiliated with Spotify or
+Ticketmaster.
+
+## License
+
+[MIT](LICENSE)

@@ -2,7 +2,7 @@ import httpx
 from fastapi import APIRouter, HTTPException, Request
 
 import queries
-from auth import get_current_user_id
+from auth import get_current_user_id, get_spotify_access_token
 from database import get_db
 from models import ArtistResponse, SyncResponse
 
@@ -84,7 +84,8 @@ def sync(request: Request):
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    range_artists = {tr: _fetch_range(user["access_token"], tr) for tr in _TIME_RANGES}
+    access_token = get_spotify_access_token(user)
+    range_artists = {tr: _fetch_range(access_token, tr) for tr in _TIME_RANGES}
     scores = _compute_scores(range_artists)
 
     with get_db() as conn:
@@ -98,6 +99,13 @@ def sync(request: Request):
                     "affinity_score":   data["affinity"],
                     "genres":           data["genres"],
                 })
+            # Drop artists that fell out of every top-50 list, and force the
+            # concert feed to re-search with the new artist set.
+            cur.execute(queries.DELETE_ARTISTS_NOT_IN, {
+                "user_id":    user_id,
+                "artist_ids": list(scores.keys()),
+            })
+            cur.execute(queries.INVALIDATE_CONCERTS, {"user_id": user_id})
 
     artists = sorted(
         [

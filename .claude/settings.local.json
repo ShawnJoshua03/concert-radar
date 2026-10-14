@@ -1,8 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\shawn\\\\spotify-dashboard\" -Recurse)",
-      "Bash(Select-Object FullName)"
-    ]
-  }
-}

@@ -16,7 +16,8 @@ UPSERT_USER = """
 
 GET_USER_BY_ID = """
     SELECT id, spotify_id, display_name, email, avatar_url, city,
-           lat, lng, access_token, refresh_token, token_expires_at
+           lat, lng, access_token, refresh_token, token_expires_at,
+           concerts_fetched_at
     FROM users
     WHERE id = %(user_id)s
 """
@@ -35,11 +36,16 @@ UPDATE_CITY = """
     WHERE id = %(user_id)s
 """
 
+MARK_CONCERTS_FETCHED = """
+    UPDATE users SET concerts_fetched_at = NOW() WHERE id = %(user_id)s
+"""
+
+INVALIDATE_CONCERTS = """
+    UPDATE users SET concerts_fetched_at = NULL WHERE id = %(user_id)s
+"""
+
 DELETE_USER_SHOWS = """
-    DELETE FROM shows
-    WHERE artist_id IN (
-        SELECT artist_id FROM user_artists WHERE user_id = %(user_id)s
-    )
+    DELETE FROM shows WHERE user_id = %(user_id)s
 """
 
 # ── Artists ───────────────────────────────────────────────────────────────────
@@ -55,6 +61,11 @@ UPSERT_ARTIST = """
         updated_at       = NOW()
 """
 
+DELETE_ARTISTS_NOT_IN = """
+    DELETE FROM user_artists
+    WHERE user_id = %(user_id)s AND NOT (artist_id = ANY(%(artist_ids)s))
+"""
+
 GET_TOP_ARTISTS = """
     SELECT artist_id, artist_name, artist_image_url, affinity_score, genres
     FROM user_artists
@@ -66,9 +77,10 @@ GET_TOP_ARTISTS = """
 # ── Shows ─────────────────────────────────────────────────────────────────────
 
 UPSERT_SHOW = """
-    INSERT INTO shows (artist_id, event_id, event_name, venue_name, venue_city, event_date, ticket_url, price_min, price_max, cached_at)
-    VALUES (%(artist_id)s, %(event_id)s, %(event_name)s, %(venue_name)s, %(venue_city)s, %(event_date)s, %(ticket_url)s, %(price_min)s, %(price_max)s, NOW())
-    ON CONFLICT (event_id) DO UPDATE SET
+    INSERT INTO shows (user_id, artist_id, event_id, event_name, venue_name, venue_city, event_date, ticket_url, price_min, price_max, cached_at)
+    VALUES (%(user_id)s, %(artist_id)s, %(event_id)s, %(event_name)s, %(venue_name)s, %(venue_city)s, %(event_date)s, %(ticket_url)s, %(price_min)s, %(price_max)s, NOW())
+    ON CONFLICT (user_id, event_id) DO UPDATE SET
+        artist_id  = EXCLUDED.artist_id,
         event_name = EXCLUDED.event_name,
         venue_name = EXCLUDED.venue_name,
         venue_city = EXCLUDED.venue_city,
@@ -95,8 +107,8 @@ GET_CONCERTS_FOR_USER = """
         ua.affinity_score,
         ua.genres
     FROM shows s
-    JOIN user_artists ua ON ua.artist_id = s.artist_id
-    WHERE ua.user_id = %(user_id)s
+    JOIN user_artists ua ON ua.artist_id = s.artist_id AND ua.user_id = s.user_id
+    WHERE s.user_id = %(user_id)s
       AND s.event_date >= NOW()
       AND s.event_date <= NOW() + INTERVAL '6 months'
     ORDER BY ua.affinity_score DESC, s.event_date ASC
@@ -104,11 +116,4 @@ GET_CONCERTS_FOR_USER = """
 
 DELETE_STALE_SHOWS = """
     DELETE FROM shows WHERE event_date < NOW() - INTERVAL '1 day'
-"""
-
-GET_SHOWS_CACHE_AGE = """
-    SELECT MIN(cached_at) AS oldest_cache
-    FROM shows s
-    JOIN user_artists ua ON ua.artist_id = s.artist_id
-    WHERE ua.user_id = %(user_id)s
 """

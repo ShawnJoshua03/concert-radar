@@ -31,5 +31,6 @@ def update_city(body: CityUpdate, request: Request):
             })
             # Wipe cached shows so /concerts re-fetches with the new coordinates
             cur.execute(queries.DELETE_USER_SHOWS, {"user_id": user_id})
+            cur.execute(queries.INVALIDATE_CONCERTS, {"user_id": user_id})
 
     return {"ok": True, "lat": lat, "lng": lng}
