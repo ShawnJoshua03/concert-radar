@@ -1,5 +1,7 @@
 # Concert Radar
 
+**[Portfolio](https://shawnjoshua03.github.io/)**
+
 Upcoming concerts near you, ranked by how much you listen to each artist on Spotify.
 
 [![CI](https://github.com/ShawnJoshua03/concert-radar/actions/workflows/ci.yml/badge.svg)](https://github.com/ShawnJoshua03/concert-radar/actions/workflows/ci.yml)
