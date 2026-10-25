@@ -1,19 +1,28 @@
+<div align="center">
+
 # Concert Radar
 
-**[Portfolio](https://shawnjoshua03.github.io/)**
+**Upcoming concerts near you, ranked by how much you listen to each artist on Spotify.**
 
-Upcoming concerts near you, ranked by how much you listen to each artist on Spotify.
+[![Live demo](https://img.shields.io/badge/Live%20demo-1db954?style=for-the-badge&logo=githubpages&logoColor=white)](https://shawnjoshua03.github.io/concert-radar/)
+[![Write-up](https://img.shields.io/badge/Write--up-333?style=for-the-badge&logo=readme&logoColor=white)](https://shawnjoshua03.github.io/stories/concert-radar/)
+[![Portfolio](https://img.shields.io/badge/Portfolio-555?style=for-the-badge)](https://shawnjoshua03.github.io/)
 
 [![CI](https://github.com/ShawnJoshua03/concert-radar/actions/workflows/ci.yml/badge.svg)](https://github.com/ShawnJoshua03/concert-radar/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Live demo](https://img.shields.io/badge/demo-live-1db954)](https://shawnjoshua03.github.io/concert-radar/)
 ![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.111-009688?logo=fastapi&logoColor=white)
+![JavaScript](https://img.shields.io/badge/JavaScript-F7DF1E?logo=javascript&logoColor=black)
 ![D3.js](https://img.shields.io/badge/D3.js-v7-F9A03C?logo=d3.js&logoColor=white)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?logo=postgresql&logoColor=white)
+
+<a href="https://shawnjoshua03.github.io/concert-radar/">
+  <img src="https://shawnjoshua03.github.io/images/concert-radar.jpg" alt="Concert Radar dashboard" width="800">
+</a>
+
+</div>
 
 **Live demo:** https://shawnjoshua03.github.io/concert-radar/ (no account needed)
-
-[![Concert Radar dashboard](docs/screenshot.png)](https://shawnjoshua03.github.io/concert-radar/)
 
 The hosted demo runs in the browser on made-up artists and shows. Their scores come from the same
 formula the backend uses. Logging in with a real Spotify account requires running the backend
@@ -213,7 +222,7 @@ concert-radar/
 ├── frontend/
 │   ├── index.html, dashboard.html, style.css
 │   └── js/  api.js, auth.js, charts.js, demo.js
-├── docs/screenshot.png         # README screenshot
+├── docs/screenshot.png         # dashboard screenshot
 ├── scripts/dev.py              # setup/test/lint/run tasks that also work on Windows
 ├── schema.sql                  # schema and re-runnable migrations
 ├── render.yaml                 # Render blueprint for the API
